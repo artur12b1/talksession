@@ -1,0 +1,658 @@
+{% extends 'talksession/base.html' %}
+{% load static %}
+
+{% block title %}{{ room_title }} – TalkSession{% endblock %}
+{% block body_class %}dashboard-body{% endblock %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="{% static 'talksession/css/dashboard.css' %}">
+{% endblock %}
+
+{% block content %}
+
+<div class="topbar">
+    <div class="topbar-title">TalkSession</div>
+
+    <div class="topbar-actions">
+        <a href="{% url 'dashboard' %}" class="topbar-link" >Powrót</a>
+
+        <a href="{% url 'profile' %}" class="topbar-user">
+            {% if request.user.profile.avatar %}
+                <img
+                    src="{{ request.user.profile.avatar.url }}"
+                    alt="Avatar użytkownika"
+                    class="topbar-avatar"
+                >
+            {% else %}
+                <div class="topbar-avatar-placeholder">
+                    {{ request.user.username|first|upper }}
+                </div>
+            {% endif %}
+            <span>{{ request.user.username }}</span>
+        </a>
+
+        <a href="{% url 'logout' %}" class="topbar-link">Wyloguj</a>
+    </div>
+</div>
+
+{% if messages %}
+    <div class="page-messages">
+        {% for message in messages %}
+            <div class="page-message {{ message.tags }}">
+                {{ message }}
+            </div>
+        {% endfor %}
+    </div>
+{% endif %}
+
+<div class="main-layout">
+
+    <aside class="sidebar">
+
+        <div class="section-title">Wiadomości prywatne</div>
+
+        {% for item in dm_items %}
+            <a href="{% url 'room' item.room.id %}"
+               class="chat-item {% if room.is_direct and item.room.id == room.id %}active-room{% endif %}">
+
+                {% if item.other_user.profile.avatar %}
+                    <div class="sidebar-avatar-wrap">
+                        <img
+                            src="{{ item.other_user.profile.avatar.url }}"
+                            alt="Avatar użytkownika"
+                            class="sidebar-user-avatar"
+                        >
+                    </div>
+                {% else %}
+                    <div class="avatar">
+                        {{ item.other_user.username|first|upper }}
+                    </div>
+                {% endif %}
+                
+                <div class="chat-text">
+                    <div class="chat-name">
+                        {{ item.other_user.username }}
+                        {% if item.other_user.role_badge %}
+                            <span class="role-badge {{ item.other_user.role_badge_class }}">
+                                {{ item.other_user.role_badge }}
+                            </span>
+                        {% endif %}
+                    </div>
+                    <div class="chat-preview">
+                        {% if item.last_message %}
+                            {% if item.last_message.user %}
+                                {{ item.last_message.user.username }}:
+                            {% endif %}
+
+                            {% if item.last_message.content %}
+                                {{ item.last_message.content|truncatechars:26 }}
+                            {% elif item.last_message.image and item.last_message.audio %}
+                                [Obraz + audio]
+                            {% elif item.last_message.image %}
+                                [Obraz]
+                            {% elif item.last_message.audio %}
+                                [Audio]
+                            {% else %}
+                                Wiadomość
+                            {% endif %}
+                        {% else %}
+                            Brak wiadomości
+                        {% endif %}
+                    </div>
+                </div>
+            </a>
+        {% empty %}
+            <div class="chat-preview">Brak wiadomości prywatnych</div>
+        {% endfor %}
+
+        <hr class="sidebar-divider">
+
+        <div class="section-title">Kanały</div>
+
+        {% if perms.talksession.manage_channels or request.user.is_superuser %}
+            <form method="post" action="{% url 'create_channel' %}" class="create-channel-form">
+                {% csrf_token %}
+                <input type="hidden" name="next" value="{{ request.path }}">
+
+                <input
+                    type="text"
+                    name="channel_name"
+                    class="create-channel-input"
+                    placeholder="Nazwa nowego kanału"
+                >
+
+                <button type="submit" class="create-channel-btn">
+                    Utwórz
+                </button>
+            </form>
+        {% endif %}
+
+        {% for item in channel_items %}
+            <a href="{% url 'room' item.room.id %}" class="chat-item {% if not room.is_direct and item.room.id == room.id %}active-room{% endif %}">
+                <div class="avatar">#</div>
+            
+                <div class="chat-text">
+                    <div class="chat-name">
+                        {{ item.room.name }}
+                        {% if item.is_member %}
+                            <span class="role-badge moderator">Dołączono</span>
+                        {% endif %}
+                    </div>
+                    <div class="chat-preview">
+                        {% if item.last_message %}
+                            {% if item.last_message.user %}
+                                {{ item.last_message.user.username }}:
+                            {% endif %}
+
+                            {% if item.last_message.content %}
+                                {{ item.last_message.content|truncatechars:26 }}
+                            {% elif item.last_message.image and item.last_message.audio %}
+                                [Obraz + audio]
+                            {% elif item.last_message.image %}
+                                [Obraz]
+                            {% elif item.last_message.audio %}
+                                [Audio]
+                            {% else %}
+                                Wiadomość
+                            {% endif %}
+                        {% else %}
+                            Brak wiadomości
+                        {% endif %}
+                    </div>
+                </div>
+            </a>
+        {% empty %}
+            <div class="chat-preview">Brak kanałów</div>
+        {% endfor %}
+
+    </aside>
+
+    <main class="chat-room">
+        <div class="chat-room-header">
+            <h2>{{ room_title }}</h2>
+                
+            {% if room.is_direct %}
+                <p>Wiadomość prywatna</p>
+            {% else %}
+                <p>Historia wiadomości kanału</p>
+                
+                <div class="channel-header-actions">
+                    {% if is_channel_member %}
+                        <form method="post" action="{% url 'leave_channel' room.id %}" class="mt-2">
+                            {% csrf_token %}
+                            <button type="submit" class="btn btn-sm btn-danger">
+                                Opuść kanał
+                            </button>
+                        </form>
+                    {% else %}
+                        <form method="post" action="{% url 'join_channel' room.id %}" class="mt-2">
+                            {% csrf_token %}
+                            <button type="submit" class="btn btn-sm btn-light">
+                                Dołącz do kanału
+                            </button>
+                        </form>
+                    {% endif %}
+                    
+                    {% if perms.talksession.manage_channels or request.user.is_superuser %}
+                        <form method="post"
+                              action="{% url 'delete_channel' room.id %}"
+                              class="mt-2"
+                              onsubmit="return confirm('Czy na pewno chcesz usunąć ten kanał?');">
+                            {% csrf_token %}
+                            <button type="submit" class="btn btn-sm btn-danger">
+                                Usuń kanał
+                            </button>
+                        </form>
+                    {% endif %}
+                </div>
+            {% endif %}
+        </div>
+
+        <div class="messages-container">
+            {% for message in chat_messages %}
+                <div class="message-row">
+
+                    <div class="message-avatar">
+                        {% if message.user and message.user.profile.avatar %}
+                            <img
+                                src="{{ message.user.profile.avatar.url }}"
+                                alt="Avatar autora"
+                            >
+                        {% else %}
+                            <div class="message-avatar-placeholder">
+                                {% if message.user %}
+                                    {{ message.user.username|first|upper }}
+                                {% else %}
+                                    {{ message.author|first|upper }}
+                                {% endif %}
+                            </div>
+                        {% endif %}
+                    </div>
+
+                    <div class="message-body">
+                        <div class="message-bubble">
+                            <div class="message-meta">
+  
+                                <strong>
+                                    {% if message.user %}
+                                        {{ message.user.username }}
+                                        {% if message.user.role_badge %}
+                                            <span class="role-badge {{ message.user.role_badge_class }}">
+                                                {{ message.user.role_badge }}
+                                            </span>
+                                        {% endif %}
+                                    {% else %}
+                                        {{ message.author }}
+                                    {% endif %}
+                                </strong>
+
+                                <span>{{ message.created_at|date:"d.m.Y H:i" }}</span>
+                            
+                                {% if message.edited_at %}
+                                    <span class="edited-label">(edytowano)</span>
+                                {% endif %}
+                            </div>
+
+                            <div class="message-content">
+                                {% if message.content %}
+                                    {{ message.content }}
+                                {% endif %}
+                                
+                                {% if message.image %}
+                                    <div class="message-image-wrapper">
+                                        <img
+                                            src="{{ message.image.url }}"
+                                            alt="Obrazek w wiadomości"
+                                            class="message-image"
+                                        >
+                                    </div>
+                                {% endif %}
+
+                                {% if message.audio %}
+                                    <div class="message-audio-wrapper">
+                                        <audio controls class="message-audio">
+                                            <source src="{{ message.audio.url }}" type="audio/mpeg">
+                                            Twoja przeglądarka nie obsługuje odtwarzacza audio.
+                                        </audio>
+                                    </div>
+                                {% endif %}
+                            </div>
+
+                            <div class="message-actions">
+                                {% if message.user and message.user != request.user %}
+                                    {% if perms.talksession.block_users or request.user.is_superuser %}
+                                        <form method="post" action="{% url 'toggle_block' message.user.id %}">
+                                            {% csrf_token %}
+                                            <input type="hidden" name="next" value="{{ request.path }}">
+                                            <button type="submit" class="btn btn-sm btn-warning">
+                                                {% if message.user.profile.is_blocked %}
+                                                    Odblokuj użytkownika
+                                                {% else %}
+                                                    Zablokuj użytkownika
+                                                {% endif %}
+                                            </button>
+                                        </form>
+                                    {% endif %}
+                                {% endif %}
+                                    
+                                {% if message.user == request.user or perms.talksession.moderate_messages or request.user.is_superuser %}
+                                    <a href="{% url 'edit_message' message.id %}" class="btn btn-sm btn-light">
+                                        Edytuj
+                                    </a>
+                                {% endif %}
+                                
+                                {% if message.user == request.user or perms.talksession.moderate_messages or request.user.is_superuser %}
+                                    <form method="post" action="{% url 'delete_message' message.id %}">
+                                        {% csrf_token %}
+                                        <button type="submit" class="btn btn-sm btn-danger">
+                                            Usuń wiadomość
+                                        </button>
+                                    </form>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            {% empty %}
+                <div class="empty-messages">
+                    Brak wiadomości w tej rozmowie.
+                </div>
+            {% endfor %}
+        </div>
+        
+        {% if upload_error %}
+            <div class="alert alert-danger mt-3" role="alert">
+                {{ upload_error }}
+            </div>
+        {% endif %}
+
+        {% if room.is_direct or is_channel_member %}
+            <form id="messageForm" method="post" enctype="multipart/form-data" class="message-form">
+                {% csrf_token %}
+            
+                {% if upload_error %}
+                    <div class="alert alert-danger" role="alert">
+                        {{ upload_error }}
+                    </div>
+                {% endif %}
+                
+                <!-- GÓRNY RZĄD -->
+                <div class="message-top-row">
+                    <input
+                        type="text"
+                        name="content"
+                        class="message-input"
+                        placeholder="Napisz wiadomość..."
+                    >
+                
+                    <button type="submit" class="message-send-btn">
+                        Wyślij
+                    </button>
+                </div>
+            
+                <!-- DRUGI RZĄD -->
+                <div class="message-tools-row">
+                    <label class="file-label">
+                        📷 Obraz
+                        <input
+                            type="file"
+                            name="image"
+                            accept="image/*"
+                            class="hidden-file-input"
+                            id="imageInput"
+                        >
+                    </label>
+                
+                    <button type="button" id="clearImageBtn" class="tool-btn tool-btn-danger" style="display: none;">
+                        ❌ Usuń obraz
+                    </button>
+                
+                    <label class="file-label">
+                        🎵 Audio
+                        <input
+                            type="file"
+                            name="audio"
+                            accept="audio/*"
+                            class="hidden-file-input"
+                            id="audioInput"
+                        >
+                    </label>
+                
+                    <button type="button" id="clearAudioBtn" class="tool-btn tool-btn-danger" style="display: none;">
+                        ❌ Usuń audio
+                    </button>
+                
+                    <button type="button" id="startRecordingBtn" class="tool-btn">
+                        🎤 Nagraj
+                    </button>
+                
+                    <button type="button" id="stopRecordingBtn" class="tool-btn tool-btn-warning" disabled>
+                        ⏹ Stop
+                    </button>
+                
+                    <button type="button" id="clearRecordedBtn" class="tool-btn tool-btn-danger" style="display: none;">
+                        ❌ Usuń nagranie
+                    </button>
+                </div>
+            
+                <!-- WSPÓLNY STATUS WYBRANYCH PLIKÓW -->
+                <div id="selectedFilesInfo" class="selected-files-info"></div>
+            
+                <!-- STATUS NAGRYWANIA -->
+                <div id="recordingStatus" class="recording-status"></div>
+            
+                <!-- PODGLĄD AUDIO -->
+                <div id="audioPreviewContainer" class="audio-preview-container" style="display: none;">
+                    <p class="audio-preview-label">Podgląd nagrania:</p>
+                    <audio id="recordedAudioPreview" controls class="message-audio"></audio>
+                </div>
+            </form>
+        {% else %}
+            <div class="alert alert-info mt-3" role="alert">
+                Aby wysyłać wiadomości w tym kanale, dołącz do kanału.
+            </div>
+        {% endif %}
+    </main>
+
+</div>
+
+<script>
+    let mediaRecorder = null;
+    let recordedChunks = [];
+    let recordedAudioBlob = null;
+    let recordedMimeType = null;
+    let recordingStream = null;
+
+    const messageForm = document.getElementById('messageForm');
+    const messagesContainer = document.querySelector('.messages-container')
+    const startRecordingBtn = document.getElementById('startRecordingBtn');
+    const stopRecordingBtn = document.getElementById('stopRecordingBtn');
+    const clearRecordedBtn = document.getElementById('clearRecordedBtn');
+
+    const recordingStatus = document.getElementById('recordingStatus');
+    const audioPreviewContainer = document.getElementById('audioPreviewContainer');
+    const recordedAudioPreview = document.getElementById('recordedAudioPreview');
+
+    const imageInput = document.getElementById('imageInput');
+    const audioInput = document.getElementById('audioInput');
+
+    const clearImageBtn = document.getElementById('clearImageBtn');
+    const clearAudioBtn = document.getElementById('clearAudioBtn');
+
+    const selectedFilesInfo = document.getElementById('selectedFilesInfo');
+
+    function refreshSelectedFilesInfo() {
+        const parts = [];
+
+        if (imageInput && imageInput.files && imageInput.files.length > 0) {
+            parts.push(`Obraz: ${imageInput.files[0].name}`);
+            if (clearImageBtn) clearImageBtn.style.display = 'inline-flex';
+        } else {
+            if (clearImageBtn) clearImageBtn.style.display = 'none';
+        }
+
+        if (audioInput && audioInput.files && audioInput.files.length > 0) {
+            parts.push(`Audio: ${audioInput.files[0].name}`);
+            if (clearAudioBtn) clearAudioBtn.style.display = 'inline-flex';
+        } else {
+            if (clearAudioBtn) clearAudioBtn.style.display = 'none';
+        }
+
+        if (recordedAudioBlob) {
+            parts.push('Audio: nagranie z mikrofonu');
+            if (clearRecordedBtn) clearRecordedBtn.style.display = 'inline-flex';
+        } else {
+            if (clearRecordedBtn) clearRecordedBtn.style.display = 'none';
+        }
+
+        selectedFilesInfo.textContent = parts.join(' | ');
+    }
+
+    function clearSelectedImage() {
+        if (imageInput) {
+            imageInput.value = '';
+        }
+        refreshSelectedFilesInfo();
+    }
+
+    function clearSelectedAudioFile() {
+        if (audioInput) {
+            audioInput.value = '';
+        }
+        refreshSelectedFilesInfo();
+    }
+
+    function clearRecordedAudio() {
+        recordedAudioBlob = null;
+        recordedMimeType = null;
+        recordedChunks = [];
+
+        recordedAudioPreview.pause();
+        recordedAudioPreview.removeAttribute('src');
+        recordedAudioPreview.load();
+
+        audioPreviewContainer.style.display = 'none';
+        recordingStatus.textContent = '';
+
+        refreshSelectedFilesInfo();
+    }
+
+    function getSupportedAudioMimeType() {
+        const candidates = [
+            'audio/webm;codecs=opus',
+            'audio/webm',
+            'audio/ogg;codecs=opus',
+            'audio/ogg',
+            'audio/mp4',
+        ];
+
+        for (const type of candidates) {
+            if (window.MediaRecorder && MediaRecorder.isTypeSupported(type)) {
+                return type;
+            }
+        }
+
+        return '';
+    }
+
+    async function startRecording() {
+        try {
+            recordingStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+
+            recordedChunks = [];
+            recordedAudioBlob = null;
+            recordedMimeType = getSupportedAudioMimeType();
+
+            if (recordedMimeType) {
+                mediaRecorder = new MediaRecorder(recordingStream, { mimeType: recordedMimeType });
+            } else {
+                mediaRecorder = new MediaRecorder(recordingStream);
+                recordedMimeType = mediaRecorder.mimeType || 'audio/webm';
+            }
+
+            mediaRecorder.ondataavailable = (event) => {
+                if (event.data && event.data.size > 0) {
+                    recordedChunks.push(event.data);
+                }
+            };
+
+            mediaRecorder.onstop = () => {
+                recordedAudioBlob = new Blob(recordedChunks, { type: recordedMimeType });
+
+                const previewUrl = URL.createObjectURL(recordedAudioBlob);
+                recordedAudioPreview.src = previewUrl;
+                audioPreviewContainer.style.display = 'block';
+
+                recordingStatus.textContent = 'Nagranie gotowe do wysłania.';
+                startRecordingBtn.disabled = false;
+                stopRecordingBtn.disabled = true;
+
+                if (recordingStream) {
+                    recordingStream.getTracks().forEach(track => track.stop());
+                }
+
+                refreshSelectedFilesInfo();
+            };
+
+            mediaRecorder.start();
+            recordingStatus.textContent = 'Nagrywanie...';
+            startRecordingBtn.disabled = true;
+            stopRecordingBtn.disabled = false;
+            audioPreviewContainer.style.display = 'none';
+
+            refreshSelectedFilesInfo();
+
+        } catch (error) {
+            console.error('Błąd dostępu do mikrofonu:', error);
+            recordingStatus.textContent = 'Nie udało się uruchomić mikrofonu.';
+        }
+    }
+
+    function stopRecording() {
+        if (mediaRecorder && mediaRecorder.state === 'recording') {
+            mediaRecorder.stop();
+        }
+    }
+
+    function getAudioExtensionFromMimeType(mimeType) {
+        if (mimeType.includes('ogg')) return 'ogg';
+        if (mimeType.includes('mp4')) return 'm4a';
+        return 'webm';
+    }
+
+    function scrollMessagesToBottom() {
+    if (!messagesContainer) {
+        return;
+    }
+
+    messagesContainer.scrollTop = messagesContainer.scrollHeight;
+    }
+
+    if (imageInput) {
+        imageInput.addEventListener('change', refreshSelectedFilesInfo);
+    }
+
+    if (audioInput) {
+        audioInput.addEventListener('change', refreshSelectedFilesInfo);
+    }
+
+    if (clearImageBtn) {
+        clearImageBtn.addEventListener('click', clearSelectedImage);
+    }
+
+    if (clearAudioBtn) {
+        clearAudioBtn.addEventListener('click', clearSelectedAudioFile);
+    }
+
+    if (clearRecordedBtn) {
+        clearRecordedBtn.addEventListener('click', clearRecordedAudio);
+    }
+
+    if (startRecordingBtn) {
+        startRecordingBtn.addEventListener('click', startRecording);
+    }
+
+    if (stopRecordingBtn) {
+        stopRecordingBtn.addEventListener('click', stopRecording);
+    }
+
+    if (messageForm) {
+        messageForm.addEventListener('submit', async function (event) {
+            if (!recordedAudioBlob) {
+                return; // zwykły submit jeśli nie ma nagrania z mikrofonu
+            }
+
+            event.preventDefault();
+
+            const formData = new FormData(messageForm);
+            const extension = getAudioExtensionFromMimeType(recordedMimeType || 'audio/webm');
+            const recordedFile = new File([recordedAudioBlob], `voice_message.${extension}`, {
+                type: recordedMimeType || 'audio/webm'
+            });
+
+            formData.set('audio', recordedFile);
+
+            try {
+                const response = await fetch(window.location.href, {
+                    method: 'POST',
+                    body: formData,
+                    credentials: 'same-origin',
+                });
+
+                if (response.ok) {
+                    window.location.reload();
+                } else {
+                    recordingStatus.textContent = 'Nie udało się wysłać nagrania.';
+                }
+            } catch (error) {
+                console.error('Błąd wysyłania nagrania:', error);
+                recordingStatus.textContent = 'Błąd podczas wysyłania nagrania.';
+            }
+        });
+    }
+
+    window.addEventListener('load', scrollMessagesToBottom);
+</script>
+
+
+{% endblock %}

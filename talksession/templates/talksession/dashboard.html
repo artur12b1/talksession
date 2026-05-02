@@ -1,0 +1,214 @@
+{% extends 'talksession/base.html' %}
+{% load static %}
+
+{% block title %}Dashboard – TalkSession{% endblock %}
+{% block body_class %}dashboard-body{% endblock %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="{% static 'talksession/css/dashboard.css' %}">
+{% endblock %}
+
+{% block content %}
+
+<div class="topbar">
+    <div class="topbar-title">TalkSession</div>
+
+    <div class="topbar-actions">
+        <a href="{% url 'profile' %}" class="topbar-user">
+            {% if request.user.profile.avatar %}
+                <img
+                    src="{{ request.user.profile.avatar.url }}"
+                    alt="Avatar użytkownika"
+                    class="topbar-avatar"
+                >
+            {% else %}
+                <div class="topbar-avatar-placeholder">
+                    {{ request.user.username|first|upper }}
+                </div>
+            {% endif %}
+            <span>{{ request.user.username }}</span>
+        </a>
+
+        <a href="{% url 'logout' %}">Wyloguj</a>
+    </div>
+</div>
+
+{% if messages %}
+    <div class="page-messages">
+        {% for message in messages %}
+            <div class="page-message {{ message.tags }}">
+                {{ message }}
+            </div>
+        {% endfor %}
+    </div>
+{% endif %}
+
+<div class="main-layout">
+
+    <aside class="sidebar">
+
+        <div class="section-title">Wiadomości prywatne</div>
+
+        {% for item in dm_items %}
+            <a href="{% url 'room' item.room.id %}" class="chat-item">
+                {% if item.other_user.profile.avatar %}
+                    <div class="sidebar-avatar-wrap">
+                        <img
+                            src="{{ item.other_user.profile.avatar.url }}"
+                            alt="Avatar użytkownika"
+                            class="sidebar-user-avatar"
+                        >
+                    </div>
+                {% else %}
+                    <div class="avatar">
+                        {{ item.other_user.username|first|upper }}
+                    </div>
+                {% endif %}
+
+                <div class="chat-text">
+                    <div class="chat-text">
+                        <div class="chat-name">
+                            {{ item.other_user.username }}
+                            {% if item.other_user.role_badge %}
+                                <span class="role-badge {{ item.other_user.role_badge_class }}">
+                                    {{ item.other_user.role_badge }}
+                                </span>
+                            {% endif %}
+                        </div>
+                    
+                        <div class="chat-preview">
+                            {% if item.last_message %}
+                                {% if item.last_message.user %}
+                                    {{ item.last_message.user.username }}:
+                                {% endif %}
+                                {% if item.last_message.content %}
+                                    {{ item.last_message.content|truncatechars:26 }}
+                                {% elif item.last_message.image and item.last_message.audio %}
+                                    [Obraz + audio]
+                                {% elif item.last_message.image %}
+                                    [Obraz]
+                                {% elif item.last_message.audio %}
+                                    [Audio]
+                                {% else %}
+                                    Wiadomość
+                                {% endif %}
+                            {% else %}
+                                Brak wiadomości
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            </a>
+        {% empty %}
+            <div class="chat-preview">Brak wiadomości prywatnych</div>
+        {% endfor %}
+
+        <hr class="sidebar-divider">
+
+        <div class="section-title">Kanały</div>
+
+        {% if perms.talksession.manage_channels or request.user.is_superuser %}
+            <form method="post" action="{% url 'create_channel' %}" class="create-channel-form">
+                {% csrf_token %}
+                <input type="hidden" name="next" value="{% url 'dashboard' %}">
+
+                <input
+                    type="text"
+                    name="channel_name"
+                    class="create-channel-input"
+                    placeholder="Nazwa nowego kanału"
+                >
+
+                <button type="submit" class="create-channel-btn">
+                    Utwórz
+                </button>
+            </form>
+        {% endif %}
+    
+        {% for item in channel_items %}
+            <a href="{% url 'room' item.room.id %}" class="chat-item">
+                <div class="avatar">#</div>
+            
+                <div class="chat-text">
+                    <div class="chat-name">
+                        {{ item.room.name }}
+                        {% if item.is_member %}
+                            <span class="role-badge moderator">Dołączono</span>
+                        {% endif %}
+                    </div>
+                    <div class="chat-preview">
+                        {% if item.last_message %}
+                            {% if item.last_message.user %}
+                                {{ item.last_message.user.username }}:
+                            {% endif %}
+                    
+                            {% if item.last_message.content %}
+                                {{ item.last_message.content|truncatechars:24 }}
+                            {% elif item.last_message.image and item.last_message.audio %}
+                                [Obraz + audio]
+                            {% elif item.last_message.image %}
+                                [Obraz]
+                            {% elif item.last_message.audio %}
+                                [Audio]
+                            {% else %}
+                                Wiadomość
+                            {% endif %}
+                        {% else %}
+                            Brak wiadomości
+                        {% endif %}
+                    </div>
+                </div>
+            </a>
+        {% empty %}
+            <div class="chat-preview">Brak kanałów</div>
+        {% endfor %}
+
+        <hr class="sidebar-divider">
+
+        <div class="section-title">Rozpocznij DM</div>
+                
+        {% for user in users %}
+            <a href="{% url 'start_dm' user.id %}" class="chat-item">
+                {% if user.profile.avatar %}
+                    <div class="sidebar-avatar-wrap">
+                        <img
+                            src="{{ user.profile.avatar.url }}"
+                            alt="Avatar użytkownika"
+                            class="sidebar-user-avatar"
+                        >
+                    </div>
+                {% else %}
+                    <div class="avatar">
+                        {{ user.username|first|upper }}
+                    </div>
+                {% endif %}
+                
+                <div class="chat-text">
+                    <div class="chat-name">
+                        {{ user.username }}
+                        {% if user.role_badge %}
+                            <span class="role-badge {{ user.role_badge_class }}">
+                                {{ user.role_badge }}
+                            </span>
+                        {% endif %}
+                    </div>
+                
+                    <div class="chat-preview">Kliknij, aby rozpocząć rozmowę</div>
+                </div>
+            </a>
+        {% empty %}
+            <div class="chat-preview">Brak innych użytkowników</div>
+        {% endfor %}
+
+    </aside>
+
+    <main class="chat-area">
+        <div class="chat-placeholder">
+            <h2>Wybierz rozmowę</h2>
+            <p>Wybierz DM lub kanał z listy po lewej stronie</p>
+        </div>
+    </main>
+
+</div>
+
+{% endblock %}

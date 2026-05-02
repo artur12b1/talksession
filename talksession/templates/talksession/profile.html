@@ -1,0 +1,58 @@
+{% extends 'talksession/base.html' %}
+{% load static %}
+
+{% block title %}Profil – TalkSession{% endblock %}
+{% block body_class %}dashboard-body{% endblock %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="{% static 'talksession/css/dashboard.css' %}">
+{% endblock %}
+
+{% block content %}
+
+<div class="topbar">
+    <div class="topbar-title">TalkSession</div>
+
+    <div class="topbar-actions">
+        <a href="{% url 'dashboard' %}">Dashboard</a>
+        <a href="{% url 'logout' %}">Wyloguj</a>
+    </div>
+</div>
+
+<div class="main-layout">
+    <main class="chat-room" style="max-width: 900px; margin: 0 auto; width: 100%;">
+        <div class="chat-room-header">
+            <h2>Twój profil</h2>
+            <p>Zarządzaj swoim avatarem i opisem</p>
+        </div>
+
+        <div class="message-bubble" style="padding: 24px;">
+            <div style="display: flex; align-items: center; gap: 20px; flex-wrap: wrap;">
+                {% if profile.avatar %}
+                    <img src="{{ profile.avatar.url }}" alt="Avatar" style="width: 110px; height: 110px; object-fit: cover; border-radius: 50%;">
+                {% else %}
+                    <div style="width: 110px; height: 110px; border-radius: 50%; background: rgba(255,255,255,0.18); display: flex; align-items: center; justify-content: center; font-size: 2rem; font-weight: 700;">
+                        {{ request.user.username|first|upper }}
+                    </div>
+                {% endif %}
+
+                <div>
+                    <h3 style="margin-bottom: 8px;">{{ request.user.username }}</h3>
+                    <p style="margin-bottom: 8px;">{{ request.user.email }}</p>
+
+                    {% if profile.bio %}
+                        <p style="margin-bottom: 16px;">{{ profile.bio }}</p>
+                    {% else %}
+                        <p style="margin-bottom: 16px; opacity: 0.8;">Brak opisu profilu.</p>
+                    {% endif %}
+
+                    <a href="{% url 'edit_profile' %}" class="btn btn-light">
+                        Edytuj profil
+                    </a>
+                </div>
+            </div>
+        </div>
+    </main>
+</div>
+
+{% endblock %}

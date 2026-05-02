@@ -1,0 +1,51 @@
+{% extends 'talksession/base.html' %}
+{% load static %}
+
+{% block title %}Edycja profilu – TalkSession{% endblock %}
+{% block body_class %}dashboard-body{% endblock %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="{% static 'talksession/css/dashboard.css' %}">
+{% endblock %}
+
+{% block content %}
+
+<div class="topbar">
+    <div class="topbar-title">TalkSession</div>
+
+    <div class="topbar-actions">
+        <a href="{% url 'profile' %}">Powrót do profilu</a>
+        <a href="{% url 'logout' %}">Wyloguj</a>
+    </div>
+</div>
+
+<div class="main-layout">
+    <main class="chat-room" style="max-width: 900px; margin: 0 auto; width: 100%;">
+        <div class="chat-room-header">
+            <h2>Edytuj profil</h2>
+            <p>Zmień avatar oraz opis</p>
+        </div>
+
+        <div class="message-bubble" style="padding: 24px;">
+            <form method="post" enctype="multipart/form-data">
+                {% csrf_token %}
+
+                <div class="mb-3">
+                    <label class="form-label">Avatar</label>
+                    {{ form.avatar }}
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label">Opis</label>
+                    {{ form.bio }}
+                </div>
+
+                <button type="submit" class="btn btn-light">
+                    Zapisz zmiany
+                </button>
+            </form>
+        </div>
+    </main>
+</div>
+
+{% endblock %}

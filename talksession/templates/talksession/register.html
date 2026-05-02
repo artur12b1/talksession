@@ -1,0 +1,82 @@
+{% extends 'talksession/base.html' %}
+{% load static %}
+
+{% block title %}Rejestracja – TalkSession{% endblock %}
+{% block body_class %}auth-body{% endblock %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="{% static 'talksession/css/auth.css' %}">
+{% endblock %}
+
+{% block content %}
+<div class="auth-card">
+    <h2 class="auth-title">Rejestracja TalkSession</h2>
+
+    {% if error %}
+        <div class="alert alert-danger" role="alert">
+            {{ error }}
+        </div>
+    {% endif %}
+
+    <form method="post">
+        {% csrf_token %}
+
+        <div class="mb-3">
+            <label class="form-label">Login</label>
+            <input
+                type="text"
+                name="username"
+                class="form-control"
+                placeholder="Wybierz login"
+                required
+            >
+        </div>
+
+        <div class="mb-3">
+            <label class="form-label">Adres e-mail</label>
+            <input
+                type="email"
+                name="email"
+                class="form-control"
+                placeholder="Wpisz e-mail"
+                required
+            >
+        </div>
+
+        <div class="mb-3">
+            <label class="form-label">Hasło</label>
+            <input
+                type="password"
+                name="password1"
+                class="form-control"
+                placeholder="Utwórz hasło"
+                required
+            >
+        </div>
+
+        <div class="mb-3">
+            <label class="form-label">Powtórz hasło</label>
+            <input
+                type="password"
+                name="password2"
+                class="form-control"
+                placeholder="Powtórz hasło"
+                required
+            >
+        </div>
+
+        <div class="d-grid">
+            <button type="submit" class="btn btn-success">
+                Zarejestruj się
+            </button>
+        </div>
+    </form>
+
+    <div class="auth-link">
+        <small>
+            Masz już konto?
+            <a href="{% url 'login' %}">Zaloguj się</a>
+        </small>
+    </div>
+</div>
+{% endblock %}

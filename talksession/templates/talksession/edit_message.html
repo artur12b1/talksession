@@ -1,0 +1,71 @@
+{% extends 'talksession/base.html' %}
+{% load static %}
+
+{% block title %}Edycja wiadomości – TalkSession{% endblock %}
+{% block body_class %}dashboard-body{% endblock %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="{% static 'talksession/css/dashboard.css' %}">
+{% endblock %}
+
+{% block content %}
+
+<div class="topbar">
+    <div class="topbar-title">TalkSession</div>
+
+    <div class="topbar-actions">
+        <a href="{% url 'room' room_id %}" class="topbar-link">Powrót</a>
+        <a href="{% url 'profile' %}" class="topbar-user">
+            {% if request.user.profile.avatar %}
+                <img
+                    src="{{ request.user.profile.avatar.url }}"
+                    alt="Avatar użytkownika"
+                    class="topbar-avatar"
+                >
+            {% else %}
+                <div class="topbar-avatar-placeholder">
+                    {{ request.user.username|first|upper }}
+                </div>
+            {% endif %}
+            <span>{{ request.user.username }}</span>
+        </a>
+        <a href="{% url 'logout' %}" class="topbar-link">Wyloguj</a>
+    </div>
+</div>
+
+<div class="main-layout">
+    <main class="chat-room" style="max-width: 900px; margin: 0 auto; width: 100%;">
+        <div class="chat-room-header">
+            <h2>Edytuj wiadomość</h2>
+            <p>Zmodyfikuj treść wiadomości i zapisz zmiany</p>
+        </div>
+
+        <div class="message-bubble" style="padding: 24px;">
+            <form method="post">
+                {% csrf_token %}
+
+                <div class="mb-3">
+                    <label class="form-label">Treść wiadomości</label>
+                    <textarea
+                        name="content"
+                        class="form-control"
+                        rows="5"
+                        required
+                    >{{ message.content }}</textarea>
+                </div>
+
+                <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                    <button type="submit" class="btn btn-light">
+                        Zapisz zmiany
+                    </button>
+
+                    <a href="{% url 'room' room_id %}" class="btn btn-outline-light">
+                        Anuluj
+                    </a>
+                </div>
+            </form>
+        </div>
+    </main>
+</div>
+
+{% endblock %}

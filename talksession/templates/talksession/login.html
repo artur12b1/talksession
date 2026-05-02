@@ -1,0 +1,60 @@
+{% extends 'talksession/base.html' %}
+{% load static %}
+
+{% block title %}Logowanie – TalkSession{% endblock %}
+{% block body_class %}auth-body{% endblock %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="{% static 'talksession/css/auth.css' %}">
+{% endblock %}
+
+{% block content %}
+<div class="auth-card">
+    <h2 class="auth-title">Witaj w TalkSession!</h2>
+
+    {% if error %}
+        <div class="alert alert-danger" role="alert">
+            {{ error }}
+        </div>
+    {% endif %}
+
+    <form method="post">
+        {% csrf_token %}
+
+        <div class="mb-3">
+            <label class="form-label">Login</label>
+            <input
+                type="text"
+                name="username"
+                class="form-control"
+                placeholder="Wpisz login"
+                required
+            >
+        </div>
+
+        <div class="mb-3">
+            <label class="form-label">Hasło</label>
+            <input
+                type="password"
+                name="password"
+                class="form-control"
+                placeholder="Wpisz hasło"
+                required
+            >
+        </div>
+
+        <div class="d-grid">
+            <button type="submit" class="btn btn-primary">
+                Zaloguj się
+            </button>
+        </div>
+    </form>
+
+    <div class="auth-link">
+        <small>
+            Nie masz konta?
+            <a href="{% url 'register' %}">Zarejestruj się</a>
+        </small>
+    </div>
+</div>
+{% endblock %}
