@@ -160,4 +160,4 @@ STORAGES = {
     },
 }
 
-CSRF_TRUSTED_ORIGINS = ["talksession.onrender.com"]
+CSRF_TRUSTED_ORIGINS = ["https://talksession.onrender.com"]
