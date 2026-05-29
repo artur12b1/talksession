@@ -159,3 +159,5 @@ STORAGES = {
         "BACKEND": "whitenoise.storage.StaticFilesStorage",
     },
 }
+
+CSRF_TRUSTED_ORIGINS = ["talksession.onrender.com"]
