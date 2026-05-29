@@ -1,0 +1,163 @@
+{% extends 'talksession/base.html' %}
+{% load static %}
+
+{% block title %}Zgłoszenia – TalkSession{% endblock %}
+{% block body_class %}dashboard-body{% endblock %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="{% static 'talksession/css/dashboard.css' %}">
+{% endblock %}
+
+{% block content %}
+
+<div class="topbar">
+    <div class="topbar-title">TalkSession</div>
+
+    <div class="topbar-actions">
+        <a href="{% url 'dashboard' %}" class="topbar-link">Dashboard</a>
+
+        <a href="{% url 'profile' %}" class="topbar-user">
+            {% if request.user.profile.avatar %}
+                <img
+                    src="{{ request.user.profile.avatar.url }}"
+                    alt="Avatar użytkownika"
+                    class="topbar-avatar"
+                >
+            {% else %}
+                <div class="topbar-avatar-placeholder">
+                    {{ request.user.username|first|upper }}
+                </div>
+            {% endif %}
+            <span>{{ request.user.username }}</span>
+        </a>
+
+        <a href="{% url 'logout' %}" class="topbar-link">Wyloguj</a>
+    </div>
+</div>
+
+{% if messages %}
+    <div class="page-messages">
+        {% for message in messages %}
+            <div class="page-message {{ message.tags }}">
+                {{ message }}
+            </div>
+        {% endfor %}
+    </div>
+{% endif %}
+
+<div class="main-layout">
+    <main class="chat-room" style="max-width: 1100px; margin: 0 auto; width: 100%;">
+
+        <div class="chat-room-header">
+            <h2>Zgłoszenia użytkowników</h2>
+            <p>Lista zgłoszeń wysłanych przez użytkowników do administracji.</p>
+        </div>
+
+        {% for report in reports %}
+            <div class="report-card">
+                <div class="report-header">
+                    <div>
+                        <strong>Zgłoszony użytkownik:</strong>
+                        {{ report.reported_user.username }}
+
+                        {% if report.reported_user.profile.is_blocked %}
+                            <span class="role-badge admin">Zablokowany</span>
+                        {% endif %}
+                    </div>
+
+                    <div>
+                        <span class="report-status report-status-{{ report.status }}">
+                            {{ report.get_status_display }}
+                        </span>
+                    </div>
+                </div>
+
+                <div class="report-details">
+                    <p>
+                        <strong>Zgłaszający:</strong>
+                        {{ report.reporter.username }}
+                    </p>
+
+                    <p>
+                        <strong>Data zgłoszenia:</strong>
+                        {{ report.created_at|date:"d.m.Y H:i" }}
+                    </p>
+
+                    <p>
+                        <strong>Powód:</strong>
+                        {{ report.reason }}
+                    </p>
+
+                    {% if report.message %}
+                        <p>
+                            <strong>Zgłoszona wiadomość:</strong>
+                            "{{ report.message.content }}"
+                        </p>
+
+                        {% if report.message.room %}
+                            <p>
+                                <strong>Pokój:</strong>
+                                {% if report.message.room.is_direct %}
+                                    DM #{{ report.message.room.id }}
+                                {% else %}
+                                    # {{ report.message.room.name }}
+                                {% endif %}
+                            </p>
+
+                            <a href="{% url 'room' report.message.room.id %}" class="btn btn-sm btn-light">
+                                Przejdź do rozmowy
+                            </a>
+                        {% endif %}
+                    {% else %}
+                        <p>
+                            <strong>Zgłoszona wiadomość:</strong>
+                            wiadomość została usunięta
+                        </p>
+                    {% endif %}
+                </div>
+
+                <div class="report-actions">
+                    <form method="post" action="{% url 'update_report_status' report.id %}">
+                        {% csrf_token %}
+                        <input type="hidden" name="status" value="reviewed">
+                        <button type="submit" class="btn btn-sm btn-light">
+                            Oznacz jako sprawdzone
+                        </button>
+                    </form>
+
+                    <form method="post" action="{% url 'update_report_status' report.id %}">
+                        {% csrf_token %}
+                        <input type="hidden" name="status" value="rejected">
+                        <button type="submit" class="btn btn-sm btn-secondary">
+                            Odrzuć
+                        </button>
+                    </form>
+
+                    {% if not report.reported_user.is_superuser %}
+                        <form method="post" action="{% url 'toggle_block' report.reported_user.id %}">
+                            {% csrf_token %}
+                            <input type="hidden" name="next" value="{% url 'reports' %}">
+
+                            <button type="submit" class="btn btn-sm btn-danger">
+                                {% if report.reported_user.profile.is_blocked %}
+                                    Odblokuj użytkownika
+                                {% else %}
+                                    Zablokuj użytkownika
+                                {% endif %}
+                            </button>
+                        </form>
+                    {% endif %}
+                </div>
+            </div>
+        {% empty %}
+            <div class="message-bubble" style="padding: 24px;">
+                <p style="margin: 0; opacity: 0.85;">
+                    Brak zgłoszeń.
+                </p>
+            </div>
+        {% endfor %}
+
+    </main>
+</div>
+
+{% endblock %}

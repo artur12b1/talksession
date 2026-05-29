@@ -1,0 +1,290 @@
+{% extends 'talksession/base.html' %}
+{% load static %}
+
+{% block title %}{{ room_title }} – TalkSession{% endblock %}
+{% block body_class %}dashboard-body{% endblock %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="{% static 'talksession/css/dashboard.css' %}">
+{% endblock %}
+
+{% block content %}
+
+<div class="topbar">
+    <div class="topbar-title">TalkSession</div>
+
+    <div class="topbar-actions">
+        <a href="{% url 'room' room.id %}" class="topbar-link">Powrót do czatu</a>
+        <a href="{% url 'dashboard' %}" class="topbar-link">Dashboard</a>
+        <a href="{% url 'logout' %}" class="topbar-link">Wyloguj</a>
+    </div>
+</div>
+
+<div class="main-layout">
+    <main class="chat-room" style="max-width: 900px; margin: 0 auto; width: 100%;">
+
+        <div class="chat-room-header">
+            <h2>{{ room_title }}</h2>
+            <p>Połącz się głosowo z użytkownikami obecnymi w tym pokoju.</p>
+        </div>
+
+        <div class="message-bubble" style="padding: 24px;">
+            <div id="voiceStatus" class="recording-status">
+                Kliknij przycisk, aby dołączyć do kanału głosowego.
+            </div>
+
+            <div style="display: flex; gap: 10px; flex-wrap: wrap; margin-top: 16px;">
+                <button id="joinVoiceBtn" class="btn btn-light">
+                    Dołącz do głosu
+                </button>
+
+                <button id="leaveVoiceBtn" class="btn btn-danger" disabled>
+                    Opuść głos
+                </button>
+            </div>
+        </div>
+
+        <div class="message-bubble" style="padding: 24px;">
+            <h4>Uczestnicy głosowi</h4>
+            <div id="voiceUsers">
+                Brak aktywnych połączeń.
+            </div>
+        </div>
+
+        <div id="remoteAudios"></div>
+
+    </main>
+</div>
+
+<script>
+    const roomId = "{{ room.id }}";
+    const currentUserId = Number("{{ request.user.id }}");
+    const currentUsername = "{{ request.user.username }}";
+
+    let voiceSocket = null;
+    let localStream = null;
+    let peerConnections = {};
+
+    const joinVoiceBtn = document.getElementById('joinVoiceBtn');
+    const leaveVoiceBtn = document.getElementById('leaveVoiceBtn');
+    const voiceStatus = document.getElementById('voiceStatus');
+    const voiceUsers = document.getElementById('voiceUsers');
+    const remoteAudios = document.getElementById('remoteAudios');
+
+    function getWebSocketUrl() {
+        const protocol = window.location.protocol === 'https:' ? 'wss://' : 'ws://';
+        return protocol + window.location.host + '/ws/voice/' + roomId + '/';
+    }
+
+    function addVoiceUser(userId, username) {
+        let item = document.getElementById('voice-user-' + userId);
+
+        if (!item) {
+            item = document.createElement('div');
+            item.id = 'voice-user-' + userId;
+            item.className = 'voice-user-item';
+            item.textContent = username;
+            voiceUsers.appendChild(item);
+        }
+
+        if (voiceUsers.textContent.includes('Brak aktywnych połączeń')) {
+            voiceUsers.textContent = '';
+            voiceUsers.appendChild(item);
+        }
+    }
+
+    function removeVoiceUser(userId) {
+        const item = document.getElementById('voice-user-' + userId);
+        if (item) {
+            item.remove();
+        }
+
+        const audio = document.getElementById('remote-audio-' + userId);
+        if (audio) {
+            audio.remove();
+        }
+
+        if (peerConnections[userId]) {
+            peerConnections[userId].close();
+            delete peerConnections[userId];
+        }
+
+        if (!voiceUsers.children.length) {
+            voiceUsers.textContent = 'Brak aktywnych połączeń.';
+        }
+    }
+
+    function createPeerConnection(peerUserId, peerUsername) {
+        if (peerConnections[peerUserId]) {
+            return peerConnections[peerUserId];
+        }
+
+        const peerConnection = new RTCPeerConnection({
+            iceServers: [
+                { urls: 'stun:stun.l.google.com:19302' }
+            ]
+        });
+
+        if (localStream) {
+            localStream.getTracks().forEach(track => {
+                peerConnection.addTrack(track, localStream);
+            });
+        }
+
+        peerConnection.onicecandidate = function(event) {
+            if (event.candidate) {
+                sendSignal({
+                    type: 'ice_candidate',
+                    target_user_id: peerUserId,
+                    candidate: event.candidate
+                });
+            }
+        };
+
+        peerConnection.ontrack = function(event) {
+            let audio = document.getElementById('remote-audio-' + peerUserId);
+
+            if (!audio) {
+                audio = document.createElement('audio');
+                audio.id = 'remote-audio-' + peerUserId;
+                audio.autoplay = true;
+                audio.controls = true;
+                audio.className = 'message-audio';
+                remoteAudios.appendChild(audio);
+            }
+
+            audio.srcObject = event.streams[0];
+        };
+
+        peerConnections[peerUserId] = peerConnection;
+        addVoiceUser(peerUserId, peerUsername);
+
+        return peerConnection;
+    }
+
+    function sendSignal(data) {
+        if (voiceSocket && voiceSocket.readyState === WebSocket.OPEN) {
+            voiceSocket.send(JSON.stringify(data));
+        }
+    }
+
+    async function startVoice() {
+        try {
+            localStream = await navigator.mediaDevices.getUserMedia({
+                audio: true,
+                video: false
+            });
+
+            voiceSocket = new WebSocket(getWebSocketUrl());
+
+            voiceSocket.onopen = function() {
+                voiceStatus.textContent = 'Połączono z kanałem głosowym.';
+                joinVoiceBtn.disabled = true;
+                leaveVoiceBtn.disabled = false;
+                addVoiceUser(currentUserId, currentUsername + ' (Ty)');
+            };
+
+            voiceSocket.onmessage = async function(event) {
+                const data = JSON.parse(event.data);
+
+                if (data.target_user_id && Number(data.target_user_id) !== currentUserId) {
+                    return;
+                }
+
+                if (data.type === 'user_joined') {
+                    const peerUserId = Number(data.from_user_id);
+
+                    if (peerUserId === currentUserId) {
+                        return;
+                    }
+
+                    const pc = createPeerConnection(peerUserId, data.from_username);
+                    const offer = await pc.createOffer();
+
+                    await pc.setLocalDescription(offer);
+
+                    sendSignal({
+                        type: 'offer',
+                        target_user_id: peerUserId,
+                        offer: offer
+                    });
+                }
+
+                if (data.type === 'offer') {
+                    const peerUserId = Number(data.from_user_id);
+                    const pc = createPeerConnection(peerUserId, data.from_username);
+
+                    await pc.setRemoteDescription(new RTCSessionDescription(data.offer));
+
+                    const answer = await pc.createAnswer();
+                    await pc.setLocalDescription(answer);
+
+                    sendSignal({
+                        type: 'answer',
+                        target_user_id: peerUserId,
+                        answer: answer
+                    });
+                }
+
+                if (data.type === 'answer') {
+                    const peerUserId = Number(data.from_user_id);
+                    const pc = peerConnections[peerUserId];
+
+                    if (pc) {
+                        await pc.setRemoteDescription(new RTCSessionDescription(data.answer));
+                    }
+                }
+
+                if (data.type === 'ice_candidate') {
+                    const peerUserId = Number(data.from_user_id);
+                    const pc = peerConnections[peerUserId];
+
+                    if (pc && data.candidate) {
+                        await pc.addIceCandidate(new RTCIceCandidate(data.candidate));
+                    }
+                }
+
+                if (data.type === 'user_left') {
+                    removeVoiceUser(Number(data.from_user_id));
+                }
+            };
+
+            voiceSocket.onclose = function() {
+                voiceStatus.textContent = 'Rozłączono z kanałem głosowym.';
+                joinVoiceBtn.disabled = false;
+                leaveVoiceBtn.disabled = true;
+            };
+
+        } catch (error) {
+            console.error(error);
+            voiceStatus.textContent = 'Nie udało się uzyskać dostępu do mikrofonu.';
+        }
+    }
+
+    function leaveVoice() {
+        Object.values(peerConnections).forEach(pc => pc.close());
+        peerConnections = {};
+
+        if (localStream) {
+            localStream.getTracks().forEach(track => track.stop());
+            localStream = null;
+        }
+
+        if (voiceSocket) {
+            voiceSocket.close();
+            voiceSocket = null;
+        }
+
+        remoteAudios.innerHTML = '';
+        voiceUsers.textContent = 'Brak aktywnych połączeń.';
+
+        joinVoiceBtn.disabled = false;
+        leaveVoiceBtn.disabled = true;
+        voiceStatus.textContent = 'Opuściłeś kanał głosowy.';
+    }
+
+    joinVoiceBtn.addEventListener('click', startVoice);
+    leaveVoiceBtn.addEventListener('click', leaveVoice);
+</script>
+
+{% endblock %}

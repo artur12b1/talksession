@@ -1,5 +1,6 @@
 import os
 from PIL import Image
+from django.db.models import Count
 from django.utils import timezone
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib import messages
@@ -9,8 +10,8 @@ from django.contrib.auth.models import User, Group
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError
 from django.http import HttpResponseForbidden
-from django.db.models import Count
-from .models import Room, Message, UserProfile
+from django.dispatch import receiver
+from .models import Room, Message, UserProfile, UserReport, MessageReaction
 from .forms import UserProfileForm
 
 
@@ -18,6 +19,7 @@ def get_or_create_profile(user):
     profile, _ = UserProfile.objects.get_or_create(user=user)
     return profile
 
+ALLOWED_REACTIONS = ['👍', '❤️', '😂', '😮', '😢']
 
 def is_user_blocked(user):
     if not user.is_authenticated:
@@ -127,7 +129,7 @@ def dashboard_view(request):
 
     get_or_create_profile(request.user)
 
-    channel_items = build_channel_items()
+    channel_items = build_channel_items_for_user(request.user)
 
     for item in channel_items:
         item['is_member'] = item['room'].participants.filter(id=request.user.id).exists()
@@ -138,9 +140,6 @@ def dashboard_view(request):
             -(item['last_message'].created_at.timestamp() if item['last_message'] else item['room'].created_at.timestamp())
         )
     )
-    
-    for item in channel_items:
-        item['is_member'] = item['room'].participants.filter(id=request.user.id).exists()
 
     dm_items = build_dm_items_for_user(request.user)
     
@@ -164,7 +163,6 @@ def dashboard_view(request):
     return render(request, 'talksession/dashboard.html', {
         'channel_items': channel_items,
         'dm_items': dm_items,
-        'users': users,
     })
 
 @login_required(login_url='login')
@@ -175,6 +173,10 @@ def room_view(request, id):
 
     room = get_object_or_404(Room, id=id)
 
+    if not room.is_direct and not room.participants.filter(id=request.user.id).exists():
+        return HttpResponseForbidden("Musisz dołączyć do kanału, aby zobaczyć wiadomości.")
+
+
     is_channel_member = False
     if not room.is_direct:
         is_channel_member = room.participants.filter(id=request.user.id).exists()
@@ -184,7 +186,7 @@ def room_view(request, id):
 
     get_or_create_profile(request.user)
 
-    channel_items = build_channel_items()
+    channel_items = build_channel_items_for_user(request.user)
 
     for item in channel_items:
         item['is_member'] = item['room'].participants.filter(id=request.user.id).exists()
@@ -241,6 +243,27 @@ def room_view(request, id):
     for message in chat_messages:
         if message.user:
             attach_role_badge(message.user)
+
+        user_reactions = set(
+            message.reactions
+            .filter(user=request.user)
+            .values_list('emoji', flat=True)
+        )
+
+        reaction_counts = {
+            item['emoji']: item['count']
+            for item in message.reactions.values('emoji').annotate(count=Count('id'))
+        }
+
+        message.reaction_buttons = []
+
+        for emoji in ALLOWED_REACTIONS:
+            message.reaction_buttons.append({
+                'emoji': emoji,
+                'count': reaction_counts.get(emoji, 0),
+                'reacted': emoji in user_reactions,
+            })
+
 
     if room.is_direct:
         other_user = room.participants.exclude(id=request.user.id).first()
@@ -320,6 +343,39 @@ def delete_message_view(request, message_id):
     return redirect('room', id=room_id)
 
 @login_required(login_url='login')
+def report_user_view(request, message_id):
+    if is_user_blocked(request.user):
+        logout(request)
+        return redirect('login')
+
+    message = get_object_or_404(Message, id=message_id)
+
+    if request.method != 'POST':
+        return HttpResponseForbidden("Nieprawidłowa metoda żądania.")
+
+    if not message.user:
+        return HttpResponseForbidden("Nie można zgłosić wiadomości systemowej.")
+
+    if message.user == request.user:
+        return HttpResponseForbidden("Nie możesz zgłosić samego siebie.")
+
+    reason = request.POST.get('reason', '').strip()
+
+    if not reason:
+        messages.error(request, "Podaj powód zgłoszenia.")
+        return redirect('room', id=message.room.id)
+
+    UserReport.objects.create(
+        reporter=request.user,
+        reported_user=message.user,
+        message=message,
+        reason=reason
+    )
+
+    messages.success(request, "Zgłoszenie zostało wysłane do administracji.")
+    return redirect('room', id=message.room.id)
+
+@login_required(login_url='login')
 @permission_required('talksession.block_users', raise_exception=True)
 def toggle_block_view(request, user_id):
     target_user = get_object_or_404(User, id=user_id)
@@ -377,6 +433,28 @@ def start_dm_view(request, user_id):
     room = get_or_create_direct_room(request.user, target_user)
     return redirect('room', id=room.id)
 
+@login_required(login_url='login')
+def users_view(request):
+    if is_user_blocked(request.user):
+        logout(request)
+        return redirect('login')
+
+    query = request.GET.get('q', '').strip()
+
+    users = User.objects.exclude(id=request.user.id).order_by('username')
+
+    if query:
+        users = users.filter(username__icontains=query)
+
+    for user in users:
+        get_or_create_profile(user)
+        attach_role_badge(user)
+
+    return render(request, 'talksession/users.html', {
+        'users': users,
+        'query': query,
+    })
+
 def build_dm_items_for_user(user):
     dm_rooms = (
         Room.objects
@@ -414,8 +492,12 @@ def build_dm_items_for_user(user):
 
     return dm_items
 
-def build_channel_items():
-    channel_rooms = Room.objects.filter(is_direct=False).prefetch_related('messages')
+def build_channel_items_for_user(user):
+    channel_rooms = (
+        Room.objects
+        .filter(is_direct=False, participants=user)
+        .prefetch_related('messages')
+    )
 
     channel_items = []
 
@@ -463,6 +545,37 @@ def edit_message_view(request, message_id):
         'message': message,
         'room_id': room_id,
     })
+
+@login_required(login_url='login')
+def toggle_reaction_view(request, message_id):
+    if is_user_blocked(request.user):
+        logout(request)
+        return redirect('login')
+
+    message = get_object_or_404(Message, id=message_id)
+
+    if request.method != 'POST':
+        return HttpResponseForbidden("Nieprawidłowa metoda żądania.")
+
+    if not message.room.participants.filter(id=request.user.id).exists():
+        return HttpResponseForbidden("Nie masz dostępu do tej wiadomości.")
+
+    emoji = request.POST.get('emoji', '').strip()
+
+    if emoji not in ALLOWED_REACTIONS:
+        return HttpResponseForbidden("Nieprawidłowa reakcja.")
+
+    reaction, created = MessageReaction.objects.get_or_create(
+        message=message,
+        user=request.user,
+        emoji=emoji
+    )
+
+    if not created:
+        reaction.delete()
+
+    return redirect('room', id=message.room.id)
+
 
 def validate_uploaded_image(uploaded_file):
     if not uploaded_file:
@@ -521,8 +634,21 @@ def validate_uploaded_audio(uploaded_file):
     if uploaded_file.size > max_size_bytes:
         return f"Plik audio jest za duży. Maksymalny rozmiar to {max_size_mb} MB."
 
+    
     content_type = getattr(uploaded_file, 'content_type', '')
-    if content_type and not content_type.startswith('audio/'):
+    allowed_content_types = [
+        'audio/mpeg',
+        'audio/mp3',
+        'audio/wav',
+        'audio/x-wav',
+        'audio/ogg',
+        'audio/webm',
+        'audio/mp4',
+        'video/webm',
+        'application/octet-stream',
+    ]
+
+    if content_type and content_type not in allowed_content_types and not content_type.startswith('audio/'):
         return "Przesłany plik nie wygląda na plik audio."
 
     return None
@@ -539,6 +665,14 @@ def join_channel_view(request, room_id):
         return HttpResponseForbidden("Nieprawidłowa metoda żądania.")
 
     room.participants.add(request.user)
+
+    Message.objects.create(
+        room=room,
+        user=None,
+        author="SYSTEM",
+        content=f"{request.user.username} dołączył do kanału"
+    )
+
     messages.success(request, f'Dołączono do kanału „{room.name}”.')
     return redirect('room', id=room.id)
 
@@ -608,6 +742,102 @@ def delete_channel_view(request, room_id):
 
     messages.success(request, f'Usunięto kanał „{room_name}”.')
     return redirect('dashboard')
+
+@login_required(login_url='login')
+def search_channels_view(request):
+    if is_user_blocked(request.user):
+        logout(request)
+        return redirect('login')
+
+    available_channels = (
+        Room.objects
+        .filter(is_direct=False)
+        .exclude(participants=request.user)
+        .order_by('name')
+    )
+
+    return render(request, 'talksession/search_channels.html', {
+        'available_channels': available_channels,
+    })
+
+@login_required(login_url='login')
+def reports_view(request):
+    if is_user_blocked(request.user):
+        logout(request)
+        return redirect('login')
+
+    can_manage_reports = (
+        request.user.is_superuser
+        or request.user.groups.filter(name='Moderator').exists()
+        or request.user.has_perm('talksession.block_users')
+        or request.user.has_perm('talksession.moderate_messages')
+    )
+
+    if not can_manage_reports:
+        return HttpResponseForbidden("Nie masz dostępu do zgłoszeń.")
+
+    reports = (
+        UserReport.objects
+        .select_related('reporter', 'reported_user', 'message', 'message__room')
+        .order_by('-created_at')
+    )
+
+    return render(request, 'talksession/reports.html', {
+        'reports': reports,
+    })
+
+@login_required(login_url='login')
+def update_report_status_view(request, report_id):
+    if is_user_blocked(request.user):
+        logout(request)
+        return redirect('login')
+
+    can_manage_reports = (
+        request.user.is_superuser
+        or request.user.groups.filter(name='Moderator').exists()
+        or request.user.has_perm('talksession.block_users')
+        or request.user.has_perm('talksession.moderate_messages')
+    )
+
+    if not can_manage_reports:
+        return HttpResponseForbidden("Nie masz dostępu do zgłoszeń.")
+
+    if request.method != 'POST':
+        return HttpResponseForbidden("Nieprawidłowa metoda żądania.")
+
+    report = get_object_or_404(UserReport, id=report_id)
+    status = request.POST.get('status')
+
+    if status in ['new', 'reviewed', 'rejected']:
+        report.status = status
+        report.save()
+        messages.success(request, "Status zgłoszenia został zaktualizowany.")
+    else:
+        messages.error(request, "Nieprawidłowy status zgłoszenia.")
+
+    return redirect('reports')
+
+@login_required(login_url='login')
+def voice_channel_view(request, room_id):
+    if is_user_blocked(request.user):
+        logout(request)
+        return redirect('login')
+
+    room = get_object_or_404(Room, id=room_id)
+
+    if not room.participants.filter(id=request.user.id).exists():
+        return HttpResponseForbidden("Nie masz dostępu do kanału głosowego.")
+
+    if room.is_direct:
+        other_user = room.participants.exclude(id=request.user.id).first()
+        room_title = f"Rozmowa głosowa z {other_user.username}" if other_user else "Rozmowa głosowa"
+    else:
+        room_title = f"Kanał głosowy: # {room.name}"
+
+    return render(request, 'talksession/voice_channel.html', {
+        'room': room,
+        'room_title': room_title,
+    })
 
 def custom_404_view(request, exception):
     return render(request, 'talksession/404.html', status=404)

@@ -12,5 +12,26 @@
 </head>
 <body class="{% block body_class %}{% endblock %}">
     {% block content %}{% endblock %}
+    {% if request.user.is_authenticated %}
+    <script>
+        const presenceProtocol = window.location.protocol === 'https:' ? 'wss://' : 'ws://';
+        const presenceSocket = new WebSocket(
+            presenceProtocol + window.location.host + '/ws/presence/'
+        );
+    
+        presenceSocket.onmessage = function(event) {
+            const data = JSON.parse(event.data);
+        
+            document.querySelectorAll('[data-status-dot-user-id="' + data.user_id + '"]').forEach(function(dot) {
+                dot.classList.remove('online', 'offline');
+                dot.classList.add(data.is_online ? 'online' : 'offline');
+            });
+        
+            document.querySelectorAll('[data-status-label-user-id="' + data.user_id + '"]').forEach(function(label) {
+                label.textContent = data.is_online ? 'Online' : 'Offline';
+            });
+        };
+    </script>
+    {% endif %}
 </body>
 </html>

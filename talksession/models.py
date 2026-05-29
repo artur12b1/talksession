@@ -46,6 +46,7 @@ class Message(models.Model):
     edited_at = models.DateTimeField(blank=True, null=True)
 
     class Meta:
+        ordering = ['created_at']
         permissions = [
             ("moderate_messages", "Can moderate messages"),
             ("block_users", "Can block users"),
@@ -69,6 +70,67 @@ class UserProfile(models.Model):
         null=True
     )
     is_blocked = models.BooleanField(default=False)
+    is_online = models.BooleanField(default=False)
 
     def __str__(self):
         return f"Profil: {self.user.username}"
+
+class UserReport(models.Model):
+    STATUS_CHOICES = [
+        ('new', 'Nowe'),
+        ('reviewed', 'Sprawdzone'),
+        ('rejected', 'Odrzucone'),
+    ]
+
+    reporter = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='sent_reports'
+    )
+    reported_user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='received_reports'
+    )
+    message = models.ForeignKey(
+        Message,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='reports'
+    )
+    reason = models.TextField()
+    status = models.CharField(
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default='new'
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"Zgłoszenie: {self.reporter.username} -> {self.reported_user.username}"
+
+class MessageReaction(models.Model):
+    message = models.ForeignKey(
+        Message,
+        on_delete=models.CASCADE,
+        related_name='reactions'
+    )
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='message_reactions'
+    )
+    emoji = models.CharField(max_length=10)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ('message', 'user', 'emoji')
+        ordering = ['created_at']
+
+    def __str__(self):
+        return f"{self.user.username} {self.emoji}"
+

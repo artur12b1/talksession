@@ -1,0 +1,142 @@
+{% extends 'talksession/base.html' %}
+{% load static %}
+
+{% block title %}Użytkownicy – TalkSession{% endblock %}
+{% block body_class %}dashboard-body{% endblock %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="{% static 'talksession/css/dashboard.css' %}">
+{% endblock %}
+
+{% block content %}
+
+<div class="topbar">
+    <div class="topbar-title">TalkSession</div>
+
+    <div class="topbar-actions">
+        <a href="{% url 'dashboard' %}" class="topbar-link">Dashboard</a>
+
+        <a href="{% url 'profile' %}" class="topbar-user">
+            {% if request.user.profile.avatar %}
+                <img
+                    src="{{ request.user.profile.avatar.url }}"
+                    alt="Avatar użytkownika"
+                    class="topbar-avatar"
+                >
+            {% else %}
+                <div class="topbar-avatar-placeholder">
+                    {{ request.user.username|first|upper }}
+                </div>
+            {% endif %}
+            <span>{{ request.user.username }}</span>
+        </a>
+
+        <a href="{% url 'logout' %}" class="topbar-link">Wyloguj</a>
+    </div>
+</div>
+
+{% if messages %}
+    <div class="page-messages">
+        {% for message in messages %}
+            <div class="page-message {{ message.tags }}">
+                {{ message }}
+            </div>
+        {% endfor %}
+    </div>
+{% endif %}
+
+<div class="main-layout">
+    <main class="chat-room" style="max-width: 950px; margin: 0 auto; width: 100%;">
+
+        <div class="chat-room-header">
+            <h2>Użytkownicy</h2>
+            <p>Wyszukaj użytkownika i rozpocznij wiadomość prywatną.</p>
+        </div>
+
+        <div class="message-bubble" style="padding: 24px;">
+            <form method="get" class="user-search-form">
+                <input
+                    type="text"
+                    name="q"
+                    value="{{ query }}"
+                    class="form-control"
+                    placeholder="Wpisz nazwę użytkownika..."
+                >
+
+                <button type="submit" class="btn btn-light">
+                    Szukaj
+                </button>
+
+                {% if query %}
+                    <a href="{% url 'users' %}" class="btn btn-outline-light">
+                        Wyczyść
+                    </a>
+                {% endif %}
+            </form>
+        </div>
+
+        <div class="message-bubble" style="padding: 24px;">
+            {% for user in users %}
+                <div class="available-user-item">
+
+                    <div class="available-user-left">
+                        {% if user.profile.avatar %}
+                            <img
+                                src="{{ user.profile.avatar.url }}"
+                                alt="Avatar użytkownika"
+                                class="available-user-avatar"
+                            >
+                        {% else %}
+                            <div class="avatar">
+                                {{ user.username|first|upper }}
+                            </div>
+                        {% endif %}
+
+                        <div>
+                            <div class="chat-name">
+                                {{ user.username }}
+
+                                {% if user.role_badge %}
+                                    <span class="role-badge {{ user.role_badge_class }}">
+                                        {{ user.role_badge }}
+                                    </span>
+                                {% endif %}
+
+                                <span
+                                    class="status-dot {% if user.profile.is_online %}online{% else %}offline{% endif %}"
+                                    data-status-dot-user-id="{{ user.id }}"
+                                ></span>
+
+                                <span
+                                    class="user-status"
+                                    data-status-label-user-id="{{ user.id }}"
+                                >
+                                    {% if user.profile.is_online %}
+                                        Online
+                                    {% else %}
+                                        Offline
+                                    {% endif %}
+                                </span>
+                            </div>
+
+                            <div class="available-user-description">
+                                Kliknij, aby rozpocząć rozmowę prywatną.
+                            </div>
+                        </div>
+                    </div>
+
+                    <a href="{% url 'start_dm' user.id %}" class="btn btn-light btn-sm">
+                        Rozpocznij DM
+                    </a>
+                </div>
+            {% empty %}
+                <p style="opacity: 0.85; margin: 0;">
+                    Nie znaleziono użytkowników.
+                </p>
+            {% endfor %}
+        </div>
+
+    </main>
+</div>
+
+{% endblock %}

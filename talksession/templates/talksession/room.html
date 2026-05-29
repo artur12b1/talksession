@@ -49,7 +49,31 @@
 
     <aside class="sidebar">
 
+        {% if request.user.is_superuser or perms.talksession.block_users or perms.talksession.moderate_messages %}
+            <div class="section-title">Administracja</div>
+
+            <a href="{% url 'reports' %}" class="chat-item">
+                <div class="avatar">!</div>
+            
+                <div class="chat-text">
+                    <div class="chat-name">Zgłoszenia</div>
+                    <div class="chat-preview">Zgłoszenia użytkowników</div>
+                </div>
+            </a>
+        
+            <hr class="sidebar-divider">
+        {% endif %}    
+
         <div class="section-title">Wiadomości prywatne</div>
+
+        <a href="{% url 'users' %}" class="chat-item">
+            <div class="avatar">+</div>
+
+            <div class="chat-text">
+                <div class="chat-name">Użytkownicy</div>
+                <div class="chat-preview">Przeglądaj i rozpocznij DM</div>
+            </div>
+        </a>
 
         {% for item in dm_items %}
             <a href="{% url 'room' item.room.id %}"
@@ -108,6 +132,15 @@
         <hr class="sidebar-divider">
 
         <div class="section-title">Kanały</div>
+
+        <a href="{% url 'search_channels' %}" class="chat-item">
+            <div class="avatar">+</div>
+                
+            <div class="chat-text">
+                <div class="chat-name">Dostępne kanały</div>
+                <div class="chat-preview">Przeglądaj i dołącz</div>
+            </div>
+        </a>
 
         {% if perms.talksession.manage_channels or request.user.is_superuser %}
             <form method="post" action="{% url 'create_channel' %}" class="create-channel-form">
@@ -170,12 +203,19 @@
     <main class="chat-room">
         <div class="chat-room-header">
             <h2>{{ room_title }}</h2>
+
+            {% if room.is_direct or is_channel_member %}
+                <div style="margin-top: 12px;">
+                    <a href="{% url 'voice_channel' room.id %}" class="btn btn-sm btn-light">
+                        Kanał głosowy
+                    </a>
+                </div>
+            {% endif %}
                 
             {% if room.is_direct %}
                 <p>Wiadomość prywatna</p>
             {% else %}
-                <p>Historia wiadomości kanału</p>
-                
+            
                 <div class="channel-header-actions">
                     {% if is_channel_member %}
                         <form method="post" action="{% url 'leave_channel' room.id %}" class="mt-2">
@@ -210,7 +250,7 @@
 
         <div class="messages-container">
             {% for message in chat_messages %}
-                <div class="message-row">
+                <div class="message-row {% if message.user == request.user %}own-message{% endif %}">
 
                     <div class="message-avatar">
                         {% if message.user and message.user.profile.avatar %}
@@ -241,6 +281,21 @@
                                                 {{ message.user.role_badge }}
                                             </span>
                                         {% endif %}
+                                        <span
+                                            class="status-dot {% if message.user.profile.is_online %}online{% else %}offline{% endif %}"
+                                            data-status-dot-user-id="{{ message.user.id }}"
+                                        ></span>
+                                                                                
+                                        <span
+                                            class="user-status"
+                                            data-status-label-user-id="{{ message.user.id }}"
+                                        >
+                                            {% if message.user.profile.is_online %}
+                                                Online
+                                            {% else %}
+                                                Offline
+                                            {% endif %}
+                                        </span>
                                     {% else %}
                                         {{ message.author }}
                                     {% endif %}
@@ -270,15 +325,54 @@
 
                                 {% if message.audio %}
                                     <div class="message-audio-wrapper">
-                                        <audio controls class="message-audio">
-                                            <source src="{{ message.audio.url }}" type="audio/mpeg">
+                                        <audio controls class="message-audio" src="{{ message.audio.url }}">
                                             Twoja przeglądarka nie obsługuje odtwarzacza audio.
                                         </audio>
                                     </div>
                                 {% endif %}
                             </div>
 
+                            <div class="reaction-bar">
+                                {% for reaction in message.reaction_buttons %}
+                                    <form method="post" action="{% url 'toggle_reaction' message.id %}" class="reaction-form">
+                                        {% csrf_token %}
+                                    
+                                        <input type="hidden" name="emoji" value="{{ reaction.emoji }}">
+                                    
+                                        <button
+                                            type="submit"
+                                            class="reaction-btn {% if reaction.reacted %}active{% endif %}"
+                                        >
+                                            {{ reaction.emoji }}
+                                    
+                                            {% if reaction.count > 0 %}
+                                                <span>{{ reaction.count }}</span>
+                                            {% endif %}
+                                        </button>
+                                    </form>
+                                {% endfor %}
+                            </div>
+
                             <div class="message-actions">
+
+                                {% if message.user and message.user != request.user %}
+                                   <form method="post" action="{% url 'report_user' message.id %}" class="report-form">
+                                       {% csrf_token %}
+
+                                       <input
+                                           type="text"
+                                           name="reason"
+                                           class="report-input"
+                                           placeholder="Powód zgłoszenia"
+                                           required
+                                       >
+
+                                       <button type="submit" class="btn btn-sm btn-warning">
+                                           Zgłoś
+                                       </button>
+                                   </form>
+                                {% endif %}
+
                                 {% if message.user and message.user != request.user %}
                                     {% if perms.talksession.block_users or request.user.is_superuser %}
                                         <form method="post" action="{% url 'toggle_block' message.user.id %}">
@@ -329,18 +423,24 @@
         {% if room.is_direct or is_channel_member %}
             <form id="messageForm" method="post" enctype="multipart/form-data" class="message-form">
                 {% csrf_token %}
-            
-                {% if upload_error %}
-                    <div class="alert alert-danger" role="alert">
-                        {{ upload_error }}
-                    </div>
-                {% endif %}
-                
+
+                <div class="emoji-picker">
+                    <button type="button" class="emoji-insert-btn" data-emoji="😂">😂</button> 
+                    <button type="button" class="emoji-insert-btn" data-emoji="😀">😀</button>
+                    <button type="button" class="emoji-insert-btn" data-emoji="❤️">❤️</button>
+                    <button type="button" class="emoji-insert-btn" data-emoji="👍">👍</button>
+                    <button type="button" class="emoji-insert-btn" data-emoji="🔥">🔥</button>
+                    <button type="button" class="emoji-insert-btn" data-emoji="😮">😮</button>
+                    <button type="button" class="emoji-insert-btn" data-emoji="😢">😢</button>
+                    <button type="button" class="emoji-insert-btn" data-emoji="🎉">🎉</button>
+                </div>
+
                 <!-- GÓRNY RZĄD -->
                 <div class="message-top-row">
                     <input
                         type="text"
                         name="content"
+                        id="messageContentInput"
                         class="message-input"
                         placeholder="Napisz wiadomość..."
                     >
@@ -424,6 +524,8 @@
     let recordingStream = null;
 
     const messageForm = document.getElementById('messageForm');
+    const messageContentInput = document.getElementById('messageContentInput');
+    const emojiInsertButtons = document.querySelectorAll('.emoji-insert-btn');
     const messagesContainer = document.querySelector('.messages-container')
     const startRecordingBtn = document.getElementById('startRecordingBtn');
     const stopRecordingBtn = document.getElementById('stopRecordingBtn');
@@ -617,41 +719,46 @@
     }
 
     if (messageForm) {
-        messageForm.addEventListener('submit', async function (event) {
+        messageForm.addEventListener('submit', function (event) {
             if (!recordedAudioBlob) {
-                return; // zwykły submit jeśli nie ma nagrania z mikrofonu
+                return;
             }
 
             event.preventDefault();
 
-            const formData = new FormData(messageForm);
             const extension = getAudioExtensionFromMimeType(recordedMimeType || 'audio/webm');
             const recordedFile = new File([recordedAudioBlob], `voice_message.${extension}`, {
                 type: recordedMimeType || 'audio/webm'
             });
 
-            formData.set('audio', recordedFile);
+            const dataTransfer = new DataTransfer();
+            dataTransfer.items.add(recordedFile);
 
-            try {
-                const response = await fetch(window.location.href, {
-                    method: 'POST',
-                    body: formData,
-                    credentials: 'same-origin',
-                });
-
-                if (response.ok) {
-                    window.location.reload();
-                } else {
-                    recordingStatus.textContent = 'Nie udało się wysłać nagrania.';
-                }
-            } catch (error) {
-                console.error('Błąd wysyłania nagrania:', error);
-                recordingStatus.textContent = 'Błąd podczas wysyłania nagrania.';
+            if (audioInput) {
+                audioInput.files = dataTransfer.files;
             }
+
+            messageForm.submit();
         });
     }
 
     window.addEventListener('load', scrollMessagesToBottom);
+
+    document.querySelectorAll('.emoji-insert-btn').forEach(function(button) {
+        button.addEventListener('click', function() {
+            const input = document.getElementById('messageContentInput');
+        
+            if (!input) {
+                console.log('Nie znaleziono pola messageContentInput');
+                return;
+            }
+        
+            const emoji = button.getAttribute('data-emoji');
+        
+            input.value = input.value + emoji;
+            input.focus();
+        });
+    });
 </script>
 
 

@@ -47,7 +47,31 @@
 
     <aside class="sidebar">
 
+        {% if request.user.is_superuser or perms.talksession.block_users or perms.talksession.moderate_messages %}
+            <div class="section-title">Administracja</div>
+
+            <a href="{% url 'reports' %}" class="chat-item">
+                <div class="avatar">!</div>
+            
+                <div class="chat-text">
+                    <div class="chat-name">Zgłoszenia</div>
+                    <div class="chat-preview">Zgłoszenia użytkowników</div>
+                </div>
+            </a>
+        
+            <hr class="sidebar-divider">
+        {% endif %}
+
         <div class="section-title">Wiadomości prywatne</div>
+
+        <a href="{% url 'users' %}" class="chat-item">
+            <div class="avatar">+</div>
+                
+            <div class="chat-text">
+                <div class="chat-name">Użytkownicy</div>
+                <div class="chat-preview">Przeglądaj i rozpocznij DM</div>
+            </div>
+        </a>
 
         {% for item in dm_items %}
             <a href="{% url 'room' item.room.id %}" class="chat-item">
@@ -66,36 +90,51 @@
                 {% endif %}
 
                 <div class="chat-text">
-                    <div class="chat-text">
-                        <div class="chat-name">
-                            {{ item.other_user.username }}
-                            {% if item.other_user.role_badge %}
-                                <span class="role-badge {{ item.other_user.role_badge_class }}">
-                                    {{ item.other_user.role_badge }}
-                                </span>
-                            {% endif %}
-                        </div>
+                                    <div class="chat-name">
+                    {{ item.other_user.username }}
+                                    
+                    {% if item.other_user.role_badge %}
+                        <span class="role-badge {{ item.other_user.role_badge_class }}">
+                            {{ item.other_user.role_badge }}
+                        </span>
+                    {% endif %}
                     
-                        <div class="chat-preview">
-                            {% if item.last_message %}
-                                {% if item.last_message.user %}
-                                    {{ item.last_message.user.username }}:
-                                {% endif %}
-                                {% if item.last_message.content %}
-                                    {{ item.last_message.content|truncatechars:26 }}
-                                {% elif item.last_message.image and item.last_message.audio %}
-                                    [Obraz + audio]
-                                {% elif item.last_message.image %}
-                                    [Obraz]
-                                {% elif item.last_message.audio %}
-                                    [Audio]
-                                {% else %}
-                                    Wiadomość
-                                {% endif %}
-                            {% else %}
-                                Brak wiadomości
+                    <span
+                        class="status-dot {% if item.other_user.profile.is_online %}online{% else %}offline{% endif %}"
+                        data-status-dot-user-id="{{ item.other_user.id }}"
+                    ></span>
+                    
+                    <span
+                        class="user-status"
+                        data-status-label-user-id="{{ item.other_user.id }}"
+                    >
+                        {% if item.other_user.profile.is_online %}
+                            Online
+                        {% else %}
+                            Offline
+                        {% endif %}
+                    </span>
+                </div>
+                
+                    <div class="chat-preview">
+                        {% if item.last_message %}
+                            {% if item.last_message.user %}
+                                {{ item.last_message.user.username }}:
                             {% endif %}
-                        </div>
+                            {% if item.last_message.content %}
+                                {{ item.last_message.content|truncatechars:26 }}
+                            {% elif item.last_message.image and item.last_message.audio %}
+                                [Obraz + audio]
+                            {% elif item.last_message.image %}
+                                [Obraz]
+                            {% elif item.last_message.audio %}
+                                [Audio]
+                            {% else %}
+                                Wiadomość
+                            {% endif %}
+                        {% else %}
+                            Brak wiadomości
+                        {% endif %}
                     </div>
                 </div>
             </a>
@@ -106,6 +145,15 @@
         <hr class="sidebar-divider">
 
         <div class="section-title">Kanały</div>
+        
+        <a href="{% url 'search_channels' %}" class="chat-item">
+            <div class="avatar">+</div>
+                
+            <div class="chat-text">
+                <div class="chat-name">Dostępne kanały</div>
+                <div class="chat-preview">Przeglądaj i dołącz</div>
+            </div>
+        </a>
 
         {% if perms.talksession.manage_channels or request.user.is_superuser %}
             <form method="post" action="{% url 'create_channel' %}" class="create-channel-form">
@@ -162,44 +210,6 @@
         {% empty %}
             <div class="chat-preview">Brak kanałów</div>
         {% endfor %}
-
-        <hr class="sidebar-divider">
-
-        <div class="section-title">Rozpocznij DM</div>
-                
-        {% for user in users %}
-            <a href="{% url 'start_dm' user.id %}" class="chat-item">
-                {% if user.profile.avatar %}
-                    <div class="sidebar-avatar-wrap">
-                        <img
-                            src="{{ user.profile.avatar.url }}"
-                            alt="Avatar użytkownika"
-                            class="sidebar-user-avatar"
-                        >
-                    </div>
-                {% else %}
-                    <div class="avatar">
-                        {{ user.username|first|upper }}
-                    </div>
-                {% endif %}
-                
-                <div class="chat-text">
-                    <div class="chat-name">
-                        {{ user.username }}
-                        {% if user.role_badge %}
-                            <span class="role-badge {{ user.role_badge_class }}">
-                                {{ user.role_badge }}
-                            </span>
-                        {% endif %}
-                    </div>
-                
-                    <div class="chat-preview">Kliknij, aby rozpocząć rozmowę</div>
-                </div>
-            </a>
-        {% empty %}
-            <div class="chat-preview">Brak innych użytkowników</div>
-        {% endfor %}
-
     </aside>
 
     <main class="chat-area">

@@ -1,0 +1,83 @@
+{% extends 'talksession/base.html' %}
+{% load static %}
+
+{% block title %}Dostępne kanały – TalkSession{% endblock %}
+{% block body_class %}dashboard-body{% endblock %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="{% static 'talksession/css/dashboard.css' %}">
+{% endblock %}
+
+{% block content %}
+
+<div class="topbar">
+    <div class="topbar-title">TalkSession</div>
+
+    <div class="topbar-actions">
+        <a href="{% url 'dashboard' %}" class="topbar-link">Dashboard</a>
+
+        <a href="{% url 'profile' %}" class="topbar-user">
+            {% if request.user.profile.avatar %}
+                <img
+                    src="{{ request.user.profile.avatar.url }}"
+                    alt="Avatar użytkownika"
+                    class="topbar-avatar"
+                >
+            {% else %}
+                <div class="topbar-avatar-placeholder">
+                    {{ request.user.username|first|upper }}
+                </div>
+            {% endif %}
+            <span>{{ request.user.username }}</span>
+        </a>
+
+        <a href="{% url 'logout' %}" class="topbar-link">Wyloguj</a>
+    </div>
+</div>
+
+{% if messages %}
+    <div class="page-messages">
+        {% for message in messages %}
+            <div class="page-message {{ message.tags }}">
+                {{ message }}
+            </div>
+        {% endfor %}
+    </div>
+{% endif %}
+
+<div class="main-layout">
+    <main class="chat-room" style="max-width: 900px; margin: 0 auto; width: 100%;">
+
+        <div class="chat-room-header">
+            <h2>Dostępne kanały</h2>
+            <p>Dołącz do kanału, aby zobaczyć historię czatu i wysyłać wiadomości.</p>
+        </div>
+
+        <div class="message-bubble" style="padding: 24px;">
+            {% for room in available_channels %}
+                <div class="available-channel-item">
+                    <div>
+                        <strong># {{ room.name }}</strong>
+                        <div class="available-channel-description">
+                            Po dołączeniu uzyskasz dostęp do rozmowy.
+                        </div>
+                    </div>
+
+                    <form method="post" action="{% url 'join_channel' room.id %}">
+                        {% csrf_token %}
+                        <button type="submit" class="btn btn-light btn-sm">
+                            Dołącz
+                        </button>
+                    </form>
+                </div>
+            {% empty %}
+                <p style="opacity: 0.85; margin: 0;">
+                    Brak dostępnych kanałów do dołączenia.
+                </p>
+            {% endfor %}
+        </div>
+
+    </main>
+</div>
+
+{% endblock %}
