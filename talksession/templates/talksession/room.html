@@ -742,6 +742,105 @@
         });
     }
 
+    const currentRoomId = "{{ room.id }}";
+    const currentUserId = Number("{{ request.user.id }}");
+
+    function escapeHtml(value) {
+        const div = document.createElement('div');
+        div.textContent = value || '';
+        return div.innerHTML;
+    }
+
+    function appendRealtimeMessage(data) {
+        if (!messagesContainer) {
+            return;
+        }
+
+        const row = document.createElement('div');
+        row.className = 'message-row';
+
+        if (Number(data.user_id) === currentUserId) {
+            row.classList.add('own-message');
+        }
+
+        let imageHtml = '';
+
+        if (data.image_url) {
+            imageHtml =
+                '<div class="message-image-wrapper">' +
+                    '' + escapeHtml(data.image_url) + '' +
+                '</div>';
+        }
+
+        let audioHtml = '';
+
+        if (data.audio_url) {
+            audioHtml =
+                '<div class="message-audio-wrapper">' +
+                    '' + escapeHtml(data.audio_url) + '' +
+                        'Twoja przeglądarka nie obsługuje odtwarzacza audio.' +
+                    '</audio>' +
+                '</div>';
+        }
+
+        row.innerHTML =
+            '<div class="message-avatar">' +
+                '<div class="message-avatar-placeholder">' +
+                    escapeHtml(data.username.charAt(0).toUpperCase()) +
+                '</div>' +
+            '</div>' +
+
+            '<div class="message-body">' +
+                '<div class="message-bubble">' +
+                    '<div class="message-meta">' +
+                        '<strong>' + escapeHtml(data.username) + '</strong>' +
+                        '<span>' + escapeHtml(data.created_at) + '</span>' +
+                    '</div>' +
+
+                    '<div class="message-content">' +
+                        escapeHtml(data.content) +
+                        imageHtml +
+                        audioHtml +
+                    '</div>' +
+                '</div>' +
+            '</div>';
+
+        messagesContainer.appendChild(row);
+        scrollMessagesToBottom();
+    }
+
+    const chatProtocol = window.location.protocol === 'https:' ? 'wss://' : 'ws://';
+
+    const chatSocket = new WebSocket(
+        chatProtocol + window.location.host + '/ws/chat/' + currentRoomId + '/'
+    );
+
+    chatSocket.onopen = function() {
+        console.log('Chat WebSocket connected');
+    };
+
+    chatSocket.onerror = function(error) {
+        console.log('Chat WebSocket error:', error);
+    };
+
+    chatSocket.onclose = function() {
+        console.log('Chat WebSocket closed');
+    };
+
+    chatSocket.onmessage = function(event) {
+        const data = JSON.parse(event.data);
+        
+        if (data.type !== 'chat_message') {
+            return;
+        }
+    
+        if (Number(data.user_id) === currentUserId) {
+            return;
+        }
+    
+        window.location.reload();
+    };
+
     window.addEventListener('load', scrollMessagesToBottom);
 
     document.querySelectorAll('.emoji-insert-btn').forEach(function(button) {

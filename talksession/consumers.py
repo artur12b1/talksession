@@ -136,3 +136,86 @@ class VoiceConsumer(AsyncWebsocketConsumer):
             return False
 
         return room.participants.filter(id=self.user.id).exists()
+    
+class NotificationConsumer(AsyncWebsocketConsumer):
+    async def connect(self):
+        self.user = self.scope["user"]
+
+        if not self.user.is_authenticated:
+            await self.close()
+            return
+
+        self.group_name = f"user_{self.user.id}_notifications"
+
+        await self.channel_layer.group_add(
+            self.group_name,
+            self.channel_name
+        )
+
+        await self.accept()
+
+    async def disconnect(self, close_code):
+        if self.user.is_authenticated:
+            await self.channel_layer.group_discard(
+                self.group_name,
+                self.channel_name
+            )
+
+    async def new_message_notification(self, event):
+        await self.send(text_data=json.dumps({
+            "type": "new_message",
+            "room_id": event["room_id"],
+            "room_name": event["room_name"],
+            "sender": event["sender"],
+            "preview": event["preview"],
+        }))
+
+class ChatConsumer(AsyncWebsocketConsumer):
+    async def connect(self):
+        self.user = self.scope["user"]
+        self.room_id = self.scope["url_route"]["kwargs"]["room_id"]
+        self.group_name = f"chat_{self.room_id}"
+
+        if not self.user.is_authenticated:
+            await self.close()
+            return
+
+        has_access = await self.user_has_access()
+
+        if not has_access:
+            await self.close()
+            return
+
+        await self.channel_layer.group_add(
+            self.group_name,
+            self.channel_name
+        )
+
+        await self.accept()
+
+    async def disconnect(self, close_code):
+        await self.channel_layer.group_discard(
+            self.group_name,
+            self.channel_name
+        )
+
+    async def chat_message(self, event):
+        await self.send(text_data=json.dumps({
+            "type": "chat_message",
+            "message_id": event["message_id"],
+            "user_id": event["user_id"],
+            "username": event["username"],
+            "content": event["content"],
+            "image_url": event["image_url"],
+            "audio_url": event["audio_url"],
+            "created_at": event["created_at"],
+        }))
+
+    @database_sync_to_async
+    def user_has_access(self):
+        try:
+            room = Room.objects.get(id=self.room_id)
+        except Room.DoesNotExist:
+            return False
+
+        return room.participants.filter(id=self.user.id).exists()

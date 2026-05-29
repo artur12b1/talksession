@@ -13,6 +13,8 @@ from django.http import HttpResponseForbidden
 from django.dispatch import receiver
 from .models import Room, Message, UserProfile, UserReport, MessageReaction
 from .forms import UserProfileForm
+from asgiref.sync import async_to_sync
+from channels.layers import get_channel_layer
 
 
 def get_or_create_profile(user):
@@ -224,7 +226,7 @@ def room_view(request, id):
                 upload_error = validate_uploaded_audio(audio)
      
             if not upload_error and (content or image or audio):
-                Message.objects.create(
+                new_message = Message.objects.create(
                     room=room,
                     user=request.user,
                     author=request.user.username,
@@ -232,6 +234,10 @@ def room_view(request, id):
                     image=image,
                     audio=audio
                 )
+                
+                send_new_message_notifications(new_message)
+                send_chat_message_to_room(new_message)
+                
                 return redirect('room', id=room.id)
      
             if not upload_error and not content and not image and not audio:
@@ -286,6 +292,29 @@ def room_view(request, id):
         'upload_error': upload_error,
         'is_channel_member': is_channel_member,
     })
+
+def send_chat_message_to_room(message):
+    channel_layer = get_channel_layer()
+
+    if not channel_layer:
+        return
+
+    image_url = message.image.url if message.image else ""
+    audio_url = message.audio.url if message.audio else ""
+
+    async_to_sync(channel_layer.group_send)(
+        f"chat_{message.room.id}",
+        {
+            "type": "chat_message",
+            "message_id": message.id,
+            "user_id": message.user.id if message.user else None,
+            "username": message.user.username if message.user else message.author,
+            "content": message.content,
+            "image_url": image_url,
+            "audio_url": audio_url,
+            "created_at": message.created_at.strftime("%d.%m.%Y %H:%M"),
+        }
+    )
 
 @login_required(login_url='login')
 def profile_view(request):
@@ -492,6 +521,44 @@ def build_dm_items_for_user(user):
 
     return dm_items
 
+def send_new_message_notifications(message):
+    channel_layer = get_channel_layer()
+
+    if not channel_layer:
+        return
+
+    room = message.room
+
+    if room.is_direct:
+        room_name = "Wiadomość prywatna"
+    else:
+        room_name = f"# {room.name}"
+
+    if message.content:
+        preview = message.content[:80]
+    elif message.image and message.audio:
+        preview = "[Obraz + audio]"
+    elif message.image:
+        preview = "[Obraz]"
+    elif message.audio:
+        preview = "[Audio]"
+    else:
+        preview = "Nowa wiadomość"
+
+    recipients = room.participants.exclude(id=message.user.id)
+
+    for user in recipients:
+        async_to_sync(channel_layer.group_send)(
+            f"user_{user.id}_notifications",
+            {
+                "type": "new_message_notification",
+                "room_id": room.id,
+                "room_name": room_name,
+                "sender": message.user.username,
+                "preview": preview,
+            }
+        )
+
 def build_channel_items_for_user(user):
     channel_rooms = (
         Room.objects
@@ -575,6 +642,7 @@ def toggle_reaction_view(request, message_id):
         reaction.delete()
 
     return redirect('room', id=message.room.id)
+
 
 
 def validate_uploaded_image(uploaded_file):

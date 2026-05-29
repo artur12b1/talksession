@@ -1770,3 +1770,44 @@ body.dashboard-body {
         max-width: 100%;
     }
 }
+
+.notification-toast {
+    position: fixed;
+    top: 82px;
+    right: 22px;
+    z-index: 9999;
+    width: 320px;
+    max-width: calc(100% - 32px);
+    padding: 14px 16px;
+    border-radius: 14px;
+    background: rgba(20, 20, 35, 0.96);
+    color: white;
+    box-shadow: 0 12px 28px rgba(0, 0, 0, 0.28);
+    cursor: pointer;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.notification-toast:hover {
+    background: rgba(30, 30, 50, 0.98);
+}
+
+.notification-title {
+    font-weight: 700;
+    margin-bottom: 4px;
+    font-size: 0.95rem;
+}
+
+.notification-text {
+    font-size: 0.86rem;
+    opacity: 0.9;
+    line-height: 1.35;
+}
+
+@media (max-width: 768px) {
+    .notification-toast {
+        top: 70px;
+        right: 12px;
+        left: 12px;
+        width: auto;
+    }
+}
